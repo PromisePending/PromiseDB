@@ -1,0 +1,25 @@
+{
+  "allowSyntheticDefaultImports": true,
+  "include": ["src/**/*"],
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["ES6", "DOM", "ES2015", "ES2017", "ES2018", "ES2019", "ES2020", "ES2021", "ES2022", "ESNext"],
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "allowJs": true,
+    "removeComments": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "outDir": "build",
+    "types": ["node"],
+    "noImplicitAny": true
+  },
+  "exclude": ["node_modules", "src/scripts"]
+}

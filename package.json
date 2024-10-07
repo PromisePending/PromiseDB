@@ -1,0 +1,50 @@
+{
+  "name": "promisedb",
+  "version": "1.0.0",
+  "description": "A Typescript ORM for automatic creation and management of models and entries from simple objects",
+  "main": "build/index.js",
+  "files": [
+    "build/**/*",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint ./src --fix",
+    "prerelease": "npm run build && node ./scripts/prepack.js",
+    "prepack": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PromisePending/PromiseDB.git"
+  },
+  "keywords": [
+    "database",
+    "orm",
+    "typescript",
+    "mysql",
+    "mariadb"
+  ],
+  "author": "PromisePendingTeam",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/PromisePending/PromiseDB/issues"
+  },
+  "homepage": "https://github.com/PromisePending/PromiseDB#readme",
+  "dependencies": {
+    "mariadb": "^3.3.2",
+    "promisedb": "file:"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@typescript-eslint/eslint-plugin": "^8.8.0",
+    "@typescript-eslint/parser": "^8.8.0",
+    "eslint": "^8.57.0",
+    "eslint-config-standard": "^17.1.0",
+    "eslint-plugin-deprecation": "^3.0.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^6.2.0",
+    "typescript": "^5.5.2"
+  }
+}
