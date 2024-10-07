@@ -14,11 +14,11 @@ export abstract class DatabaseConnection {
    * @returns The model that was registered
    * @throws An error if a model with the given name already exists
    */
-  public registerModel(name: string, model: BaseModel): BaseModel {
+  public registerModel(name: string, model: BaseModel): Promise<BaseModel> {
     if (this.registeredModels.has(name)) throw new Error(`Model with the name '${name}' is already registered in this database connection!`);
     model.register(name, this);
     this.registeredModels.set(name, model);
-    return model;
+    return Promise.resolve(model);
   }
 
   /**

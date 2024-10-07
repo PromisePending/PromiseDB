@@ -104,7 +104,7 @@ export class MariaDBConnection extends DatabaseConnection {
    * @private
    */
   private convertTypes(field: IDatabaseField): IMariaDBField {
-    if (!field.maxSize && field.type !== EDatabaseTypes.BOOLEAN) throw new DatabaseException('Any field must have a maxSize!');
+    if (!field.maxSize && field.type !== EDatabaseTypes.BOOLEAN) throw new DatabaseException('Any field (other than boolean) must have a maxSize!');
     const finalObject: IMariaDBField = {
       type: EMariaDBFieldTypes.string,
       attributes: '',
@@ -118,6 +118,9 @@ export class MariaDBConnection extends DatabaseConnection {
     switch (field.type) {
       case EDatabaseTypes.DECIMAL:
         finalObject.type = EMariaDBFieldTypes.decimal;
+        const amountOfDecimalPlaces = ((field.maxSize! % 1) != 0) ? field.maxSize!.toString().split(".")[1].length : 0;
+        const amountOfDigits = Math.ceil(Math.log10(Math.floor(field.maxSize!) + 1));
+        finalObject.typeSize = [amountOfDigits, amountOfDecimalPlaces];
         break;
       case EDatabaseTypes.TIMESTAMP:
         finalObject.type = EMariaDBFieldTypes.timestamp;
@@ -131,7 +134,7 @@ export class MariaDBConnection extends DatabaseConnection {
       case EDatabaseTypes.SINT:
       case EDatabaseTypes.UINT:
         if (field.type === EDatabaseTypes.UINT) finalObject.attributes = 'UNSIGNED';
-        finalObject.typeSize = Math.ceil(Math.log10(field.maxSize!));
+        finalObject.typeSize = Math.ceil(Math.log10(field.maxSize! + 1));
         var amountOfBytes = Math.ceil(Math.log2(field.type === EDatabaseTypes.SINT ? field.maxSize! * 2 : field.maxSize!) / 8);
         if (amountOfBytes === 0 || amountOfBytes === 1) finalObject.type = EMariaDBFieldTypes.tinyint;
         else if (amountOfBytes === 2) finalObject.type = EMariaDBFieldTypes.smallint;
