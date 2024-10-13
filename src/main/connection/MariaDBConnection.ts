@@ -118,9 +118,9 @@ export class MariaDBConnection extends DatabaseConnection {
     switch (field.type) {
       case EDatabaseTypes.DECIMAL:
         finalObject.type = EMariaDBFieldTypes.decimal;
-        const amountOfDecimalPlaces = ((field.maxSize! % 1) != 0) ? field.maxSize!.toString().split(".")[1].length : 0;
-        const amountOfDigits = Math.ceil(Math.log10(Math.floor(field.maxSize!) + 1));
-        finalObject.typeSize = [amountOfDigits, amountOfDecimalPlaces];
+        var amountOfDecimalPlaces = ((field.maxSize! % 1) !== 0) ? field.maxSize!.toString().split('.')[1].length : 0;
+        var amountOfDigits = Math.ceil(Math.log10(Math.floor(field.maxSize!) + 1));
+        finalObject.typeSize = [amountOfDigits + amountOfDecimalPlaces, amountOfDecimalPlaces];
         break;
       case EDatabaseTypes.TIMESTAMP:
         finalObject.type = EMariaDBFieldTypes.timestamp;
