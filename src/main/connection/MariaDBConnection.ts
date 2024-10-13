@@ -1,4 +1,4 @@
-import { EDatabaseTypes, EMariaDBFieldTypes, IDatabaseField, IDatabaseQueryFilter, IDatabaseQueryFilterExpression, IMariaDBDescribeField, IMariaDBField } from '../interfaces';
+import { EDatabaseQueryFilterOperator, EDatabaseTypes, EMariaDBFieldTypes, IDatabaseField, IDatabaseQueryFilter, IDatabaseQueryFilterExpression, IMariaDBDescribeField, IMariaDBField } from '../interfaces';
 import { DatabaseConnection } from './DatabaseConnection';
 import mariaDB from 'mariadb';
 import { DatabaseException } from '../errors';
@@ -62,20 +62,32 @@ export class MariaDBConnection extends DatabaseConnection {
   /**
    * @private
    */
-  override async create(database: string, keys: string[], values: any[]): Promise<void> {
+  override async create(database: string, keys: string[], values: any[]): Promise<Record<string, any>> {
     if (!this.isConnected) throw new DatabaseException('Database is not connected!');
     const conn = await this.pool!.getConnection();
     await conn.execute(`INSERT INTO ${conn.escapeId(database)} (${keys.map((key) => conn.escapeId(key)).join(', ')}) VALUES (${values.map((value) => conn.escape(value)).join(', ')})`);
+    // selects just inserted data
+    const result = (await this.read('*', database, { type: 'AND', filters: keys.map((key, index) => ({ tableKey: key, operator: EDatabaseQueryFilterOperator.EQUALS, value: values[index] })) }, 1))[0];
     await conn.release();
+    return result;
   }
 
   /**
    * @private
    */
-  override async read(keys: ('*' | string[]), database: string, filter?: IDatabaseQueryFilterExpression): Promise<Record<string, any>[]> {
+  override async read(keys: ('*' | string[]), database: string, filter?: IDatabaseQueryFilterExpression, limit?: number): Promise<Record<string, any>[]> {
     if (!this.isConnected) throw new DatabaseException('Database is not connected!');
     const conn = await this.pool!.getConnection();
-    const result = await conn.query<Record<string, any>[]>(`SELECT ${typeof keys === 'string' ? '*' : keys.map(key => conn.escapeId(key)).join(', ')} FROM ${conn.escapeId(database)} ${filter ? `WHERE ${this.filterBuilder(conn, filter)}` : ''}`);
+    const operators: string[] = [];
+    operators.push(typeof keys === 'string' ? '*' : keys.map(key => conn.escapeId(key)).join(', '));
+    operators.push(`FROM ${conn.escapeId(database)}`);
+    if (filter) operators.push(`WHERE ${this.filterBuilder(conn, filter)}`);
+    if (limit) {
+      if (limit < 1) throw new DatabaseException('Limit must be a positive number greater than ');
+      operators.push(`LIMIT ${limit}`);
+    }
+
+    const result = await conn.query<Record<string, any>[]>(`SELECT ${operators.join(' ')}`);
     await conn.release();
     return result;
   }

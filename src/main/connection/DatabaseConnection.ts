@@ -64,7 +64,7 @@ export abstract class DatabaseConnection {
    * @throws [{@link DatabaseException}]
    * @abstract
    */
-  public abstract read(keys: ('*' | string[]), database: string, filter?: IDatabaseQueryFilterExpression): Promise<Record<string, any>[]>
+  public abstract read(keys: ('*' | string[]), database: string, filter?: IDatabaseQueryFilterExpression, limit?: number): Promise<Record<string, any>[]>
 
   /**
    * Update records in the database

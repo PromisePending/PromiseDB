@@ -100,7 +100,7 @@ export class BaseModel {
    * @returns The data found
    * @throws [{@link DatabaseException}]
    */
-  public async find(query?: Record<string, any>): Promise<Record<string, unknown>[]> {
+  public async find(query?: Record<string, any>, limit?: number): Promise<Record<string, unknown>[]> {
     this.checkIsReady();
     return this.connection!.read('*', this.name!,
       query
@@ -113,6 +113,7 @@ export class BaseModel {
           })),
         }
         : undefined,
+      limit,
     );
   }
 
@@ -123,7 +124,7 @@ export class BaseModel {
    * @throws [{@link DatabaseException}]
    */
   public async findOne(query?: Record<string, any>): Promise<Record<string, unknown> | undefined> {
-    return Promise.resolve((await this.find(query))[0]);
+    return Promise.resolve((await this.find(query, 1))[0]);
   }
 
   /**
@@ -131,7 +132,7 @@ export class BaseModel {
    * @param data The data to be created
    * @throws [{@link DatabaseException}]
    */
-  public async create(data: Record<string, any>): Promise<void> {
+  public async create(data: Record<string, any>): Promise<Record<string, unknown>> {
     this.checkIsReady();
     this.validFieldsCheck(data);
     const values = Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement).map((fieldKey) => data[fieldKey] ?? null);
