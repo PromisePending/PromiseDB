@@ -9,6 +9,7 @@ export class MariaDBConnection extends DatabaseConnection {
   private password: string;
   private database: string;
   private port: number;
+  private version: string[];
 
   private pool?: mariaDB.Pool;
   private isConnecting: boolean;
@@ -21,6 +22,7 @@ export class MariaDBConnection extends DatabaseConnection {
     this.password = password;
     this.database = database;
     this.port = port;
+    this.version = []; // [10, 2, 14, MariaDB]
 
     this.isConnecting = false;
   }
@@ -37,6 +39,7 @@ export class MariaDBConnection extends DatabaseConnection {
     });
     this.isConnecting = true;
     const tmpConn = await this.pool.getConnection();
+    this.version = tmpConn.serverVersion().split(/\.|-/);
     await tmpConn.release();
     this.isConnecting = false;
     this.isConnected = true;
@@ -59,15 +62,32 @@ export class MariaDBConnection extends DatabaseConnection {
     return `(${(filter as IDatabaseQueryFilterExpression).filters.map((filter) => this.filterBuilder(conn, filter)).join(` ${(filter as IDatabaseQueryFilterExpression).type} `)})`;
   }
 
+  private async getConnection(): Promise<mariaDB.PoolConnection> {
+    if (!this.isConnected) throw new DatabaseException('Database is not connected!');
+    return await this.pool!.getConnection();
+  }
+
   /**
    * @private
    */
   override async create(database: string, keys: string[], values: any[]): Promise<Record<string, any>> {
-    if (!this.isConnected) throw new DatabaseException('Database is not connected!');
-    const conn = await this.pool!.getConnection();
-    await conn.execute(`INSERT INTO ${conn.escapeId(database)} (${keys.map((key) => conn.escapeId(key)).join(', ')}) VALUES (${values.map((value) => conn.escape(value)).join(', ')})`);
-    // selects just inserted data
-    const result = (await this.read('*', database, { type: 'AND', filters: keys.map((key, index) => ({ tableKey: key, operator: EDatabaseQueryFilterOperator.EQUALS, value: values[index] })) }, 1))[0];
+    const conn = await this.getConnection();
+    const keysField = keys.map((key) => conn.escapeId(key)).join(', ');
+    const instructions = ['INSERT INTO'];
+    instructions.push(conn.escapeId(database));
+    instructions.push(`(${keysField})`);
+    instructions.push('VALUES');
+    instructions.push(`(${values.map((value) => conn.escape(value)).join(', ')})`);
+    let result;
+    if (Number(this.version[0]) >= 10 && Number(this.version[1]) >= 5) {
+      instructions.push('RETURNING');
+      instructions.push(`${keys.join(',')}`);
+      result = await conn.execute(instructions.join(' '));
+    } else {
+      await conn.execute(instructions.join(' '));
+      // selects just inserted data
+      result = (await this.read('*', database, { type: 'AND', filters: keys.map((key, index) => ({ tableKey: key, operator: EDatabaseQueryFilterOperator.EQUALS, value: values[index] })) }, 1))[0];
+    }
     await conn.release();
     return result;
   }
@@ -76,8 +96,7 @@ export class MariaDBConnection extends DatabaseConnection {
    * @private
    */
   override async read(keys: ('*' | string[]), database: string, filter?: IDatabaseQueryFilterExpression, limit?: number): Promise<Record<string, any>[]> {
-    if (!this.isConnected) throw new DatabaseException('Database is not connected!');
-    const conn = await this.pool!.getConnection();
+    const conn = await this.getConnection();
     const operators: string[] = [];
     operators.push(typeof keys === 'string' ? '*' : keys.map(key => conn.escapeId(key)).join(', '));
     operators.push(`FROM ${conn.escapeId(database)}`);
@@ -96,8 +115,7 @@ export class MariaDBConnection extends DatabaseConnection {
    * @private
    */
   override async update(database: string, fields: string[], newData: any[], filter: IDatabaseQueryFilterExpression): Promise<void> {
-    if (!this.isConnected) throw new DatabaseException('Database is not connected!');
-    const conn = await this.pool!.getConnection();
+    const conn = await this.getConnection();
     await conn.query(`UPDATE ${conn.escapeId(database)} SET ${fields.map((field, index) => `${conn.escapeId(field)} = ${conn.escape(newData[index])}`).join(', ')} WHERE ${this.filterBuilder(conn, filter)}`);
     await conn.release();
   }
@@ -105,11 +123,46 @@ export class MariaDBConnection extends DatabaseConnection {
   /**
    * @private
    */
-  override async delete(database: string, filter: IDatabaseQueryFilterExpression): Promise<void> {
-    if (!this.isConnected) throw new DatabaseException('Database is not connected!');
-    const conn = await this.pool!.getConnection();
-    await conn.query(`DELETE FROM ${conn.escapeId(database)} WHERE ${this.filterBuilder(conn, filter)}`);
+  override async upsert(database: string, keys: string[], values: any[], updateFields: string[]): Promise<Record<string, any>> {
+    const conn = await this.getConnection();
+    const keysField = keys.map((key) => conn.escapeId(key)).join(', ');
+    const instructions = ['INSERT'];
+    if (updateFields.length === 0) instructions.push('IGNORE');
+    instructions.push('INTO');
+    instructions.push(conn.escapeId(database));
+    instructions.push(`(${keysField})`);
+    instructions.push('VALUES');
+    instructions.push(`(${values.map((value) => conn.escape(value)).join(', ')})`);
+    if (updateFields.length > 0) {
+      instructions.push('ON DUPLICATE KEY UPDATE');
+      const fieldsSQL: string[] = [];
+      updateFields.forEach((field) => {
+        fieldsSQL.push(`${field} = VALUES(${field})`);
+      });
+      instructions.push(fieldsSQL.join(','));
+    }
+    let result;
+    if (Number(this.version[0]) >= 10 && Number(this.version[1]) >= 5) {
+      instructions.push('RETURNING');
+      instructions.push(`${keys.join(',')}`);
+      result = await conn.execute(instructions.join(' '));
+    } else {
+      await conn.execute(instructions.join(' '));
+      // selects just inserted data
+      result = (await this.read('*', database, { type: 'AND', filters: keys.map((key, index) => ({ tableKey: key, operator: EDatabaseQueryFilterOperator.EQUALS, value: values[index] })) }, 1))[0];
+    }
     await conn.release();
+    return result;
+  }
+
+  /**
+   * @private
+   */
+  override async delete(database: string, filter: IDatabaseQueryFilterExpression): Promise<number> {
+    const conn = await this.getConnection();
+    const result = await conn.query(`DELETE FROM ${conn.escapeId(database)} WHERE ${this.filterBuilder(conn, filter)}`);
+    await conn.release();
+    return result.affectedRows;
   }
 
   /**
@@ -178,8 +231,7 @@ export class MariaDBConnection extends DatabaseConnection {
   }
 
   override async createTable(tableName: string, fields: Record<string, IDatabaseField>): Promise<void> {
-    if (!this.isConnected) throw new DatabaseException('Database is not connected!');
-    const conn = await this.pool!.getConnection();
+    const conn = await this.getConnection();
 
     const fieldsKeys = Object.keys(fields);
     const tableFields = fieldsKeys.map((fieldKey) => this.createSQLField(conn, fieldKey, fields[fieldKey]));
@@ -205,8 +257,7 @@ export class MariaDBConnection extends DatabaseConnection {
   }
 
   override async createOrUpdateTable(tableName: string, fields: Record<string, IDatabaseField>): Promise<void> {
-    if (!this.isConnected) throw new DatabaseException('Database is not connected!');
-    const conn = await this.pool!.getConnection();
+    const conn = await this.getConnection();
 
     const tableExists = await conn.query(`SHOW TABLES LIKE '${tableName}'`);
     if (tableExists.length === 0) return this.createTable(tableName, fields);

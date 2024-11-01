@@ -1,4 +1,4 @@
-import { EDatabaseQueryFilterOperator, EDatabaseTypes, IDatabaseField, IDatabaseQueryFilterExpression } from '../interfaces';
+import { EDatabaseQueryFilterOperator, EDatabaseTypes, IDatabaseField, IDatabaseQueryFilter, IDatabaseQueryFilterExpression } from '../interfaces';
 import { DatabaseConnection } from '../connection';
 import { DatabaseException } from '../errors';
 
@@ -53,7 +53,7 @@ export class BaseModel {
    * @throws [{@link DatabaseException}]
    */
   private checkIsReady(): void {
-    if (!this.isReady) throw new DatabaseException('Attemped to use model before registering on DataBaseManager!');
+    if (!this.isReady) throw new DatabaseException('Attempted to use model before registering on DataBaseManager!');
   }
 
   /**
@@ -70,12 +70,18 @@ export class BaseModel {
    * @private
    * @throws [{@link DatabaseException}]
    */
-  private validFieldsCheck(data: Record<string, any>): void {
-    if (Object.keys(data).length === 0) throw new DatabaseException(`No data has been provided!`);
-    if (this.nonNullableFields.find((key) => data[key] == null)) throw new DatabaseException(`A non nullable field has not been provided! ${this.nonNullableFields.join(', ')}`);
-    if (Object.keys(data).find((key) => this.nonNullableFields.includes(key) && (data[key] == null || data[key] === ''))) throw new DatabaseException(`An null param has given to a non nullable field!`);
-    Object.keys(data).find((key) => {
-      if (!this.fields[key]) throw new DatabaseException(`Field ${key} doesn't exists in ${this.name} table!`);
+  private fieldsCheck(fields: string[]): void {
+    if (fields.length === 0) throw new DatabaseException(`No field has been provided`);
+    fields.forEach((field) => {
+      if (!this.fields[field]) throw new DatabaseException(`Field ${field} doesn't exists in ${this.name} table!`);
+    });
+  }
+
+  private validFieldValueCheck(data: Record<string, any>): void {
+    const keys = Object.keys(data);
+    this.fieldsCheck(keys);
+    if (keys.find((key) => this.nonNullableFields.includes(key) && (data[key] == null || data[key] === ''))) throw new DatabaseException(`An null param has given to a non nullable field!`);
+    keys.find((key) => {
       if (this.fields[key].type === EDatabaseTypes.SINT || this.fields[key].type === EDatabaseTypes.UINT) {
         if (typeof data[key] !== 'number') throw new DatabaseException(`Field ${key} has to be a number!`);
         if (Math.floor(data[key]) !== data[key]) throw new DatabaseException(`Field ${key} has to be an integer!`);
@@ -91,6 +97,46 @@ export class BaseModel {
         if (this.fields[key].maxSize && data[key] > this.fields[key].maxSize!) throw new DatabaseException(`Field ${key} has a maximum size of ${this.fields[key].maxSize}!`);
       }
       return true;
+    });
+  }
+
+  /**
+   * @private
+   * @throws [{@link DatabaseException}]
+   */
+  private validFieldsCheck(data: Record<string, any>): void {
+    this.validFieldValueCheck(data);
+    if (this.nonNullableFields.find((key) => data[key] == null)) throw new DatabaseException(`A non nullable field has not been provided! ${this.nonNullableFields.join(', ')}`);
+  }
+
+  /**
+   * @private
+   * @throws [{@link DatabaseException}]
+   */
+  private filterCheck(filter?: IDatabaseQueryFilterExpression): void {
+    if (!filter) return;
+    if (filter.type !== 'AND' && filter.type !== 'OR') throw new DatabaseException('Filter type must be AND or OR!');
+    if (!filter.filters) throw new DatabaseException('Filter must have filters!');
+    filter.filters.forEach((filterElement: IDatabaseQueryFilterExpression | IDatabaseQueryFilter) => {
+      if ((filterElement as IDatabaseQueryFilterExpression).type) {
+        this.filterCheck(filterElement as IDatabaseQueryFilterExpression);
+      } else {
+        if (!(filterElement as IDatabaseQueryFilter).operator || !(filterElement as IDatabaseQueryFilter).tableKey || !(filterElement as IDatabaseQueryFilter).value) throw new DatabaseException('Filter must have operator, tableKey and value!');
+        if (
+          [
+            EDatabaseQueryFilterOperator.EQUALS,
+            EDatabaseQueryFilterOperator.GREATER_THAN,
+            EDatabaseQueryFilterOperator.GREATER_THAN_OR_EQUALS,
+            EDatabaseQueryFilterOperator.LESS_THAN,
+            EDatabaseQueryFilterOperator.LESS_THAN_OR_EQUALS,
+            EDatabaseQueryFilterOperator.NOT_EQUALS,
+            EDatabaseQueryFilterOperator.LIKE,
+            EDatabaseQueryFilterOperator.IN,
+            EDatabaseQueryFilterOperator.BETWEEN,
+          ].indexOf((filterElement as IDatabaseQueryFilter).operator) === -1) throw new DatabaseException('Invalid operator!');
+        const data = { [(filterElement as IDatabaseQueryFilter).tableKey]: (filterElement as IDatabaseQueryFilter).value };
+        this.validFieldValueCheck(data);
+      }
     });
   }
 
@@ -128,6 +174,43 @@ export class BaseModel {
   }
 
   /**
+   * Find data in the model by ID
+   * @param id The ID value to be used to find
+   * @param fieldName The field name to be used as id
+   * @returns The data found
+   * @throws [{@link DatabaseException}]
+   */
+  public async findByID(id: string, fieldName?: string): Promise<Record<string, unknown> | undefined> {
+    return this.findOne({ [fieldName ?? 'id']: id });
+  }
+
+  /**
+   * Select data in the model
+   * @param fields list of filed keys to be selected
+   * @param filter WHERE clause of the select query
+   * @param limit amount of rows to be selected
+   * @returns The data found
+   * @throws [{@link DatabaseException}]
+   */
+  public async select(fields: string[], filter?: IDatabaseQueryFilterExpression, limit?: number): Promise<Record<string, unknown>[]> {
+    this.checkIsReady();
+    this.fieldsCheck(fields);
+    this.filterCheck(filter);
+    return this.connection!.read(fields, this.name!, filter ?? undefined, limit);
+  }
+
+  /**
+   * Select one data in the model
+   * @param fields list of filed keys to be selected
+   * @param filter WHERE clause of the select query
+   * @returns The data found
+   * @throws [{@link DatabaseException}]
+   */
+  public async selectOne(fields: string[], filter?: IDatabaseQueryFilterExpression): Promise<Record<string, unknown> | undefined> {
+    return (await this.select(fields, filter, 1))[0];
+  }
+
+  /**
    * Create data in the model
    * @param data The data to be created
    * @throws [{@link DatabaseException}]
@@ -135,8 +218,9 @@ export class BaseModel {
   public async create(data: Record<string, any>): Promise<Record<string, unknown>> {
     this.checkIsReady();
     this.validFieldsCheck(data);
-    const values = Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement).map((fieldKey) => data[fieldKey] ?? null);
-    return this.connection!.create(this.name!, Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement), values);
+    const keys = Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement);
+    const values = keys.map((fieldKey) => data[fieldKey] ?? null);
+    return this.connection!.create(this.name!, keys, values);
   }
 
   /**
@@ -145,7 +229,7 @@ export class BaseModel {
    * @param update The data to be updated
    * @throws [{@link DatabaseException}]
    */
-  public async update(find: Record<string, any>, update: Record<string, any>): Promise<boolean> {
+  public async update(find: Record<string, any>, update: Record<string, any>): Promise<void> {
     this.checkIsReady();
     this.validFieldsCheck(update);
     const filter: IDatabaseQueryFilterExpression = {
@@ -156,17 +240,49 @@ export class BaseModel {
         value: find[fieldKey],
       })),
     };
-    const values = Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement).map((fieldKey) => update[fieldKey] ?? null);
-    return this.connection!.update(this.name!, Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement), values, filter);
+    const keys = Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement);
+    const values = keys.map((fieldKey) => update[fieldKey] ?? null);
+    return this.connection!.update(this.name!, keys, values, filter);
+  }
+
+  /**
+   * Update data in the model using the provided filter
+   * @param filter The WHERE query to be used to find the data
+   * @param update The data to be updated
+   * @returns
+   */
+  public async updateWhere(filter: IDatabaseQueryFilterExpression, update: Record<string, any>): Promise<void> {
+    this.checkIsReady();
+    this.validFieldsCheck(update);
+    this.filterCheck(filter);
+    const keys = Object.keys(update).filter((field) => !this.fields[field].autoIncrement);
+    const values = keys.map((fieldKey) => update[fieldKey] ?? null);
+    return this.connection!.update(this.name!, keys, values, filter);
+  }
+
+  /**
+   * Inserts data on database, if is duplicate updates the already existing row, if updateFields is an empty array and the row is duplicated, it does nothing and returns an empty array
+   * @param data The data to be inserted
+   * @param updateFields What fields to update if duplicated (undefined = all of them, empty array = none)
+   */
+  public async upsert(data: Record<string, any>, updateFields?: string[]): Promise<Record<string, unknown>> {
+    this.checkIsReady();
+    this.validFieldsCheck(data);
+    const keys = Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement);
+    if (!Array.isArray(updateFields) && !updateFields) updateFields = keys;
+    const values = keys.map((fieldKey) => data[fieldKey] ?? null);
+    return this.connection!.upsert(this.name!, keys, values, updateFields);
   }
 
   /**
    * Delete data in the model
    * @param find The query to be used to find the data
+   * @returns affected rows
    * @throws [{@link DatabaseException}]
    */
-  public async delete(find: Record<string, any>): Promise<boolean> {
+  public async delete(find: Record<string, any>): Promise<number> {
     this.checkIsReady();
+    this.validFieldValueCheck(find);
     const filter: IDatabaseQueryFilterExpression = {
       type: 'AND',
       filters: Object.keys(find).map((fieldKey) => ({
@@ -175,6 +291,17 @@ export class BaseModel {
         value: find[fieldKey],
       })),
     };
+    return this.connection!.delete(this.name!, filter);
+  }
+
+  /**
+   * Performs a delete query on the database with the provided filter
+   * @param filter the WHERE clause of the delete query
+   * @returns affected rows
+   */
+  public async deleteWhere(filter: IDatabaseQueryFilterExpression): Promise<number> {
+    this.checkIsReady();
+    this.filterCheck(filter);
     return this.connection!.delete(this.name!, filter);
   }
 }

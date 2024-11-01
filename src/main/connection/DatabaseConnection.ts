@@ -53,7 +53,7 @@ export abstract class DatabaseConnection {
    * @throws [{@link DatabaseException}]
    * @abstract
    */
-  public abstract create(database: string, keys: string[], values: any[]): Promise<any>
+  public abstract create(database: string, keys: string[], values: any[]): Promise<Record<string, any>>
 
   /**
    * Read records from the database
@@ -67,6 +67,11 @@ export abstract class DatabaseConnection {
   public abstract read(keys: ('*' | string[]), database: string, filter?: IDatabaseQueryFilterExpression, limit?: number): Promise<Record<string, any>[]>
 
   /**
+   * Inserts data on database, if it already exists, updates the selected fields
+   */
+  public abstract upsert(database: string, keys: string[], values: any[], updateFields: string[]): Promise<Record<string, any>>
+
+  /**
    * Update records in the database
    * @param database The name of the database
    * @param fields The fields to update
@@ -76,7 +81,7 @@ export abstract class DatabaseConnection {
    * @throws [{@link DatabaseException}]
    * @abstract
    */
-  public abstract update(database: string, fields: string[], newData: any[], filter: IDatabaseQueryFilterExpression): Promise<any>
+  public abstract update(database: string, fields: string[], newData: any[], filter: IDatabaseQueryFilterExpression): Promise<void>
 
   /**
    * Delete records from the database
@@ -86,7 +91,7 @@ export abstract class DatabaseConnection {
    * @throws [{@link DatabaseException}]
    * @abstract
    */
-  public abstract delete(database: string, filter: IDatabaseQueryFilterExpression): Promise<any>
+  public abstract delete(database: string, filter: IDatabaseQueryFilterExpression): Promise<number>
 
   /**
    * Create a table in the database
