@@ -1,4 +1,10 @@
-import { EDatabaseQueryFilterOperator, EDatabaseTypes, EMariaDBFieldTypes, IDatabaseField, IDatabaseQueryFilter, IDatabaseQueryFilterExpression, IMariaDBDescribeField, IMariaDBField } from '../interfaces';
+import { EDatabaseQueryFilterOperator,
+  EDatabaseTypes, EMariaDBFieldTypes,
+  IDatabaseField, IDatabaseQueryFilter,
+  IDatabaseQueryFilterExpression,
+  IMariaDBDescribeField,
+  IMariaDBField,
+} from '../interfaces';
 import { DatabaseConnection } from './DatabaseConnection';
 import mariaDB from 'mariadb';
 import { DatabaseException } from '../errors';
@@ -116,7 +122,8 @@ export class MariaDBConnection extends DatabaseConnection {
    */
   override async update(database: string, fields: string[], newData: any[], filter: IDatabaseQueryFilterExpression): Promise<void> {
     const conn = await this.getConnection();
-    await conn.query(`UPDATE ${conn.escapeId(database)} SET ${fields.map((field, index) => `${conn.escapeId(field)} = ${conn.escape(newData[index])}`).join(', ')} WHERE ${this.filterBuilder(conn, filter)}`);
+    await conn.query(`UPDATE ${conn.escapeId(database)} SET ${fields
+      .map((field, index) => `${conn.escapeId(field)} = ${conn.escape(newData[index])}`).join(', ')} WHERE ${this.filterBuilder(conn, filter)}`);
     await conn.release();
   }
 
