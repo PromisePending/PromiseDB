@@ -228,7 +228,7 @@ export class BaseModel {
     this.checkIsReady();
     this.validFieldsCheck(data);
     const keys = Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement);
-    const values = keys.map((fieldKey) => data[fieldKey] ?? null);
+    const values = keys.map((fieldKey) => data[fieldKey] ?? this.fields[fieldKey].default ?? null);
     return this.connection!.create(this.name!, keys, values);
   }
 
