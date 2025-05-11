@@ -110,7 +110,8 @@ export class BaseModel {
    */
   private validFieldsCheck(data: Record<string, any>): void {
     this.validFieldValueCheck(data);
-    if (this.nonNullableFields.find((key) => data[key] == null)) throw new DatabaseException(`A non nullable field has not been provided! ${this.nonNullableFields.join(', ')}`);
+    if (this.nonNullableFields.find((key) => (data[key] ?? this.fields[key].default) == null))
+      throw new DatabaseException(`A non nullable field has not been provided! ${this.nonNullableFields.join(', ')}`);
   }
 
   /**
