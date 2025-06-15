@@ -14,9 +14,9 @@ export abstract class DatabaseConnection {
    * @returns The model that was registered
    * @throws An error if a model with the given name already exists
    */
-  public registerModel(name: string, model: BaseModel): Promise<BaseModel> {
+  public async registerModel(name: string, model: BaseModel): Promise<BaseModel> {
     if (this.registeredModels.has(name)) throw new Error(`Model with the name '${name}' is already registered in this database connection!`);
-    model.register(name, this);
+    await model.register(name, this);
     this.registeredModels.set(name, model);
     return Promise.resolve(model);
   }
@@ -81,7 +81,7 @@ export abstract class DatabaseConnection {
    * @throws [{@link DatabaseException}]
    * @abstract
    */
-  public abstract update(database: string, fields: string[], newData: any[], filter: IDatabaseQueryFilterExpression): Promise<void>
+  public abstract update(database: string, fields: string[], newData: any[], filter: IDatabaseQueryFilterExpression): Promise<Record<string, any>>
 
   /**
    * Delete records from the database

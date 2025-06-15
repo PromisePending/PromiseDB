@@ -132,3 +132,4 @@ dist
 .pnp.*
 
 configs.json
+tests/teste.js

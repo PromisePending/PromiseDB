@@ -1,6 +1,6 @@
 {
   "name": "promisedb",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A Typescript ORM for automatic creation and management of models and entries from simple objects",
   "main": "build/index.js",
   "files": [

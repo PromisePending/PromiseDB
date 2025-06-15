@@ -6,7 +6,7 @@ import { EDatabaseQueryFilterOperator,
   IMariaDBField,
 } from '../interfaces';
 import { DatabaseConnection } from './DatabaseConnection';
-import mariaDB from 'mariadb';
+import mariaDB, { PoolConnection } from 'mariadb';
 import { DatabaseException } from '../errors';
 
 export class MariaDBConnection extends DatabaseConnection {
@@ -63,7 +63,7 @@ export class MariaDBConnection extends DatabaseConnection {
   private filterBuilder(conn: mariaDB.PoolConnection, filter: IDatabaseQueryFilter | IDatabaseQueryFilterExpression): string {
     if (filter.hasOwnProperty('tableKey')) {
       const { tableKey, operator, value } = filter as IDatabaseQueryFilter;
-      return `${conn.escapeId(tableKey)} ${operator} ${conn.escape(value)}`;
+      return `${conn.escapeId(tableKey)} ${ (value === null) ? (operator === EDatabaseQueryFilterOperator.NOT_EQUALS ? 'IS NOT' : 'IS') : operator } ${conn.escape(value)}`;
     }
     return `(${(filter as IDatabaseQueryFilterExpression).filters.map((filter) => this.filterBuilder(conn, filter)).join(` ${(filter as IDatabaseQueryFilterExpression).type} `)})`;
   }
@@ -71,6 +71,20 @@ export class MariaDBConnection extends DatabaseConnection {
   private async getConnection(): Promise<mariaDB.PoolConnection> {
     if (!this.isConnected) throw new DatabaseException('Database is not connected!');
     return await this.pool!.getConnection();
+  }
+
+  private async processInstruction(conn: PoolConnection, database: string, keys: string[], values: any[], instructions: string[]): Promise<Record<string, any>> {
+    let result;
+    if (Number(this.version[0]) >= 10 && Number(this.version[1]) >= 5) {
+      instructions.push('RETURNING');
+      instructions.push(`${keys.join(',')}`);
+      result = await conn.execute(instructions.join(' '));
+    } else {
+      await conn.execute(instructions.join(' '));
+      // selects just inserted data
+      result = (await this.read('*', database, { type: 'AND', filters: keys.map((key, index) => ({ tableKey: key, operator: EDatabaseQueryFilterOperator.EQUALS, value: values[index] })) }, 1))[0];
+    }
+    return result;
   }
 
   /**
@@ -84,16 +98,7 @@ export class MariaDBConnection extends DatabaseConnection {
     instructions.push(`(${keysField})`);
     instructions.push('VALUES');
     instructions.push(`(${values.map((value) => conn.escape(value)).join(', ')})`);
-    let result;
-    if (Number(this.version[0]) >= 10 && Number(this.version[1]) >= 5) {
-      instructions.push('RETURNING');
-      instructions.push(`${keys.join(',')}`);
-      result = await conn.execute(instructions.join(' '));
-    } else {
-      await conn.execute(instructions.join(' '));
-      // selects just inserted data
-      result = (await this.read('*', database, { type: 'AND', filters: keys.map((key, index) => ({ tableKey: key, operator: EDatabaseQueryFilterOperator.EQUALS, value: values[index] })) }, 1))[0];
-    }
+    const result = await this.processInstruction(conn, database, keys, values, instructions);
     await conn.release();
     return result;
   }
@@ -120,11 +125,19 @@ export class MariaDBConnection extends DatabaseConnection {
   /**
    * @private
    */
-  override async update(database: string, fields: string[], newData: any[], filter: IDatabaseQueryFilterExpression): Promise<void> {
+  override async update(database: string, fields: string[], newData: any[], filter: IDatabaseQueryFilterExpression): Promise<Record<string, any>> {
     const conn = await this.getConnection();
-    await conn.query(`UPDATE ${conn.escapeId(database)} SET ${fields
-      .map((field, index) => `${conn.escapeId(field)} = ${conn.escape(newData[index])}`).join(', ')} WHERE ${this.filterBuilder(conn, filter)}`);
+    const instructions = ['UPDATE'];
+    instructions.push(conn.escapeId(database));
+    instructions.push('SET');
+    instructions.push(fields.map((field, index) => `${conn.escapeId(field)} = ${conn.escape(newData[index])}`).join(', '));
+    instructions.push('WHERE');
+    instructions.push(this.filterBuilder(conn, filter));
+    await conn.execute(instructions.join(' '));
+    const result = (await this.read('*', database, { type: 'AND', filters: 
+      fields.map((key, index) => ({ tableKey: key, operator: EDatabaseQueryFilterOperator.EQUALS, value: newData[index] })) }, 1))[0];
     await conn.release();
+    return result;
   }
 
   /**
@@ -148,16 +161,7 @@ export class MariaDBConnection extends DatabaseConnection {
       });
       instructions.push(fieldsSQL.join(','));
     }
-    let result;
-    if (Number(this.version[0]) >= 10 && Number(this.version[1]) >= 5) {
-      instructions.push('RETURNING');
-      instructions.push(`${keys.join(',')}`);
-      result = await conn.execute(instructions.join(' '));
-    } else {
-      await conn.execute(instructions.join(' '));
-      // selects just inserted data
-      result = (await this.read('*', database, { type: 'AND', filters: keys.map((key, index) => ({ tableKey: key, operator: EDatabaseQueryFilterOperator.EQUALS, value: values[index] })) }, 1))[0];
-    }
+    const result = await this.processInstruction(conn, database, keys, values, instructions);
     await conn.release();
     return result;
   }

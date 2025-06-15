@@ -239,9 +239,10 @@ export class BaseModel {
    * @param update The data to be updated
    * @throws [{@link DatabaseException}]
    */
-  public async update(find: Record<string, any>, update: Record<string, any>): Promise<void> {
+  public async update(find: Record<string, any>, update: Record<string, any>): Promise<Record<string, any>> {
     this.checkIsReady();
-    this.validFieldsCheck(update);
+    if (!update) throw new DatabaseException('Empty update!');
+    this.validFieldValueCheck(update);
     const filter: IDatabaseQueryFilterExpression = {
       type: 'AND',
       filters: Object.keys(find).map((fieldKey) => ({
@@ -250,7 +251,7 @@ export class BaseModel {
         value: find[fieldKey],
       })),
     };
-    const keys = Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement);
+    const keys = Object.keys(update).filter((field) => !this.fields[field].autoIncrement);
     const values = keys.map((fieldKey) => update[fieldKey] ?? null);
     return this.connection!.update(this.name!, keys, values, filter);
   }
@@ -261,9 +262,10 @@ export class BaseModel {
    * @param update The data to be updated
    * @returns
    */
-  public async updateWhere(filter: IDatabaseQueryFilterExpression, update: Record<string, any>): Promise<void> {
+  public async updateWhere(filter: IDatabaseQueryFilterExpression, update: Record<string, any>): Promise<Record<string, any>> {
     this.checkIsReady();
-    this.validFieldsCheck(update);
+    if (!update) throw new DatabaseException('Empty update!');
+    this.validFieldValueCheck(update);
     this.filterCheck(filter);
     const keys = Object.keys(update).filter((field) => !this.fields[field].autoIncrement);
     const values = keys.map((fieldKey) => update[fieldKey] ?? null);
@@ -277,7 +279,7 @@ export class BaseModel {
    */
   public async upsert(data: Record<string, any>, updateFields?: string[]): Promise<Record<string, unknown>> {
     this.checkIsReady();
-    this.validFieldsCheck(data);
+    this.validFieldValueCheck(data);
     const keys = Object.keys(this.fields).filter((field) => !this.fields[field].autoIncrement);
     if (!Array.isArray(updateFields) && !updateFields) updateFields = keys;
     const values = keys.map((fieldKey) => data[fieldKey] ?? null);
